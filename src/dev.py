@@ -89,9 +89,14 @@ test_data = data.PSM_id_PEP.sample(1000)
 
 with pm.Model(coords=coords) as model:
     
-    normaldist = pm.Normal(name = "prior", mu=data.intensity.mean(), sigma=data.intensity.std())
+    normaldist = pm.Normal(name = "prior", mu=data.intensity.mean(), sigma=data.intensity.std()) # prior set from observed features
     t_grn = pm.Bernoulli(name = "t_grn, Spurious peptide id", p = test_data) # should it be logit_p or p parameter for pm.Bernoulli?
     m_grn = pm.Bernoulli(name = "m_grn, Missingness", p = expit(test_data))
+    
+    # Check how to read a PGM
+    # ToDo fill in eISP
+    # ToDo course work
+    #
     
     #m_grn = pm.Bernoulli()
     #idata = pm.sample()
