@@ -81,7 +81,8 @@ def getQvaluesFromScores(targetScores, decoyScores, includePEPs = False, include
     plt.yscale("log")
     plt.show()
   return None, probs
-  
+
+
 def getQvaluesFromPvalues(pvalues, includePEPs = False):
   targetScores = sorted(pvalues)
   pi0 = estimatePi0(targetScores)
@@ -411,6 +412,19 @@ def getPEPFromScoreLambda(targetScores, decoyScores):
   getPEPFromScore = lambda score : peps[min(np.searchsorted(allScores, score, side = 'left'), len(peps) - 1)] if not np.isnan(score) else 1.0
   
   return getPEPFromScore
+
+
+def getPEPLambda(peps):  
+  peps = np.array(peps)
+  peps = peps[::-1] # PEPs in descending order, highest PEP first
+  
+  #print(peps)
+  allScores = peps
+  allScores.sort()  # scores in ascending order, lowest score first
+  getPEP = lambda score : peps[min(np.searchsorted(allScores, score, side = 'left'), len(peps) - 1)] if not np.isnan(score) else 1.0
+  
+  return getPEP
+
 
 def fdrsToQvals(fdrs):
   qvals = [0] * len(fdrs)

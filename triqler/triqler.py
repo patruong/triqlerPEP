@@ -142,7 +142,7 @@ def runTriqler(params, triqlerInputFile, triqlerOutputFile):
 
 def convertTriqlerInputToPeptQuantRows(triqlerInputFile, peptQuantRowFile, params):
   if params['hasPEP']:
-      peptQuantRowMap, _, params['fileList'], params['groupLabels'], params['groups'] = groupTriqlerRowsByFeatureGroup(triqlerInputFile, params['decoyPattern'], params)
+      peptQuantRowMap, getPEP, params['fileList'], params['groupLabels'], params['groups'] = groupTriqlerRowsByFeatureGroup(triqlerInputFile, params['decoyPattern'], params)
   else:
       peptQuantRowMap, getPEPFromScore, params['fileList'], params['groupLabels'], params['groups'] = groupTriqlerRowsByFeatureGroup(triqlerInputFile, params['decoyPattern'], params)
   
@@ -156,8 +156,10 @@ def convertTriqlerInputToPeptQuantRows(triqlerInputFile, peptQuantRowFile, param
         specQuantRowFile = triqlerInputFile + ".sqr.tsv"
         print("Writing spectrum quant rows to file:", specQuantRowFile)
         parsers.printPeptideQuantRows(specQuantRowFile, parsers.getRunIds(params), spectrumQuantRows)
-  # HERE
-  spectrumToFeatureMatch, peptideQuantRows, intensityDiv = _selectBestFeaturesPerRunAndPeptide(peptQuantRowMap, getPEPFromScore, params)
+  if params['hasPEP']:
+    spectrumToFeatureMatch, peptideQuantRows, intensityDiv = _selectBestFeaturesPerRunAndPeptide(peptQuantRowMap, getPEP, params)
+  else:
+    spectrumToFeatureMatch, peptideQuantRows, intensityDiv = _selectBestFeaturesPerRunAndPeptide(peptQuantRowMap, getPEPFromScore, params)
   peptideQuantRows = _selectBestPeptideQuantRowPerFeatureGroup(spectrumToFeatureMatch, peptideQuantRows)
   peptideQuantRows = _divideIntensities(peptideQuantRows, intensityDiv)
   peptideQuantRows = _updateIdentPEPs(peptideQuantRows, params['decoyPattern'], params['hasLinkPEPs'])
@@ -173,9 +175,9 @@ def groupTriqlerRowsByFeatureGroup(triqlerInputFile, decoyPattern, params):
   peptQuantRowMap = collections.defaultdict(list)
   seenSpectra = set()
   targetScores, decoyScores = list(), list()
+  peps = list()
   runCondPairs = list()
   for i, trqRow in enumerate(parsers.parseTriqlerInputFile(triqlerInputFile)):
-    #print(trqRow) # TMP
     if i % 1000000 == 0:
       print("  Reading row", i)
     
@@ -183,18 +185,26 @@ def groupTriqlerRowsByFeatureGroup(triqlerInputFile, decoyPattern, params):
     if (trqRow.run, trqRow.condition) not in runCondPairs:
       runCondPairs.append((trqRow.run, trqRow.condition))
     
-    if not np.isnan(trqRow.searchScore) and trqRow.spectrumId not in seenSpectra:
-      if _isDecoy(trqRow.proteins, decoyPattern):
-        decoyScores.append(trqRow.searchScore)
-      else:
-        targetScores.append(trqRow.searchScore)
-      seenSpectra.add(trqRow.spectrumId)
+
+    
+    if params["hasPEP"] != True:
+      if not np.isnan(trqRow.searchScore) and trqRow.spectrumId not in seenSpectra:
+        if _isDecoy(trqRow.proteins, decoyPattern):
+          decoyScores.append(trqRow.searchScore)
+        else:
+          targetScores.append(trqRow.searchScore)
+        seenSpectra.add(trqRow.spectrumId)
+
+    if params["hasPEP"]:
+      if not np.isnan(trqRow.PEP) and trqRow.spectrumId not in seenSpectra:
+        peps.append(trqRow.PEP)
+        seenSpectra.add(trqRow.spectrumId)
   
   fileList, groupLabels, groups = _getFilesAndGroups(runCondPairs)
   if params['hasPEP']:
-      getPEPFromScore = 0 #make the format same as getPEPfromScore
-      
-      return peptQuantRowMap, getPEPFromScore, fileList, groupLabels, groups   
+      #getPEPFromScore = 0 #make the format same as getPEPfromScore
+      getPEP = qvality.getPEPLambda(peps)
+      return peptQuantRowMap, getPEP, fileList, groupLabels, groups   
   else:
     print("Calculating identification PEPs")
     # Need to look at getPEPfromScore 1
@@ -502,6 +512,8 @@ def _updateIdentPEPs(peptideQuantRows, decoyPattern, hasLinkPEPs):
   scoreIdxPairs = list()
   for i, row in enumerate(peptideQuantRows):
     if not np.isnan(row.combinedPEP):
+      print()
+      print(peptideQuantRows)
       # row.combinedPEP contains the SVM score
       scoreIdxPairs.append([row.combinedPEP, i, _isDecoy(row.protein, decoyPattern)]) 
   
@@ -510,7 +522,12 @@ def _updateIdentPEPs(peptideQuantRows, decoyPattern, hasLinkPEPs):
   targetScores = np.array([x[0] for x in scoreIdxPairs if x[2] == False])
   decoyScores = np.array([x[0] for x in scoreIdxPairs if x[2] == True])
   
-  _, identPEPs = qvality.getQvaluesFromScores(targetScores, decoyScores, includePEPs = True, includeDecoys = True, tdcInput = True)
+  if params['hasPEP']:
+    # NEED TO FIX HERE
+    print()
+    qvality.getQvaluesFromScores(targetScores, decoyScores, includePEPs = True, includeDecoys = True, tdcInput = True)
+  else:
+    _, identPEPs = qvality.getQvaluesFromScores(targetScores, decoyScores, includePEPs = True, includeDecoys = True, tdcInput = True)
   
   print("  Identified", qvality.countBelowFDR(identPEPs, 0.01), "peptides at 1% FDR")
   newPeptideQuantRows = list()
